@@ -1,19 +1,17 @@
+import unittest
 import os
-import pytest
-from scaledown.compressor import config
+from unittest.mock import patch
+from scaledown.compressor.config import get_api_url, default_scaledown_api
 
-def test_default_api_url():
-    # Ensure env var is not set
-    if "SCALEDOWN_API_URL" in os.environ:
-        del os.environ["SCALEDOWN_API_URL"]
-        
-    assert config.get_api_url() == "https://api.scaledown.ai/v1/compress"
+class TestConfig(unittest.TestCase):
+    def test_get_api_url_default(self):
+        # Ensure environment variable is NOT set
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(get_api_url(), default_scaledown_api)
 
-def test_custom_api_url_from_env():
-    custom_url = "https://staging.scaledown.ai/v1/compress"
-    os.environ["SCALEDOWN_API_URL"] = custom_url
-    
-    try:
-        assert config.get_api_url() == custom_url
-    finally:
-        del os.environ["SCALEDOWN_API_URL"]
+    def test_get_api_url_env_var(self):
+        # Mock environment variable
+        test_url = "https://custom.api.com"
+        with patch.dict(os.environ, {"SCALEDOWN_API_URL": test_url}):
+            self.assertEqual(get_api_url(), test_url)
+

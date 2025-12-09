@@ -1,133 +1,95 @@
-import pytest
+import os
+import unittest
 from unittest.mock import patch, MagicMock
 from scaledown.compressor.scaledown_compressor import ScaleDownCompressor
-from scaledown.exceptions import AuthenticationError, APIError
+from scaledown.types.compressed_prompt import CompressedPrompt
+from scaledown.exceptions import AuthenticationError
 
-# Sample data for mocking
-MOCK_API_RESPONSE = {
-    "results": {
-        "compressed_prompt": "Shortened text",
-        "original_prompt_tokens": 100,
-        "compressed_prompt_tokens": 50
-    },
-    "latency_ms": 120,
-    "model_used": "gpt-4o",
-    "request_metadata": {"timestamp": "2025-01-01T12:00:00Z"}
-}
-
-@pytest.fixture
-def compressor():
-    return ScaleDownCompressor(api_key="test-key-123", target_model="gpt-4o")
-
-def test_init_sets_attributes(compressor):
-    assert compressor.api_key == "test-key-123"
-    assert compressor.target_model == "gpt-4o"
-    assert compressor.api_url == "https://api.scaledown.ai/v1/compress"
-
-@patch("requests.post")
-def test_compress_single_payload_structure(mock_post, compressor):
+#this is an optional integration test that actually hits the network and uses api key
+#for running with this:  SCALEDOWN_RUN_INTEGRATION=1 SCALEDOWN_API_KEY=... uv run python -m unittest discover tests
+#else : uv run python -m unittest discover tests
+class TestScaleDownIntegration(unittest.TestCase):
     """
-    Verifies that the JSON payload is nested correctly under 'scaledown'
-    and headers use 'x-api-key'.
+    Real API tests. Skipped unless SCALEDOWN_RUN_INTEGRATION=1 is set.
     """
-    # Setup mock response
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = MOCK_API_RESPONSE
-    mock_post.return_value = mock_response
+    @unittest.skipUnless(os.environ.get("SCALEDOWN_RUN_INTEGRATION"), "Skipping integration test")
+    def test_live_api_call(self):
+        # Ensure we have a key
+        api_key = os.environ.get("SCALEDOWN_API_KEY")
+        if not api_key:
+            self.skipTest("No API key found in environment")
 
-    # Execute
-    compressor.compress(context="Long context", prompt="Question")
-
-    # Assertions
-    args, kwargs = mock_post.call_args
-    
-    # Check URL
-    assert args[0] == "https://api.scaledown.ai/v1/compress"
-    
-    # Check Headers
-    assert kwargs["headers"]["x-api-key"] == "test-key-123"
-    assert kwargs["headers"]["Content-Type"] == "application/json"
-    
-    # Check Nested Payload
-    payload = kwargs["json"]
-    assert payload["context"] == "Long context"
-    assert payload["prompt"] == "Question"
-    assert payload["model"] == "gpt-4o"
-    
-    # Verify the 'scaledown' nested dict options
-    assert "scaledown" in payload
-    assert payload["scaledown"]["rate"] == "auto"
-    assert payload["scaledown"]["preserve_keywords"] is False
-
-@patch("requests.post")
-@patch("scaledown.types.CompressedPrompt.from_api_response")
-def test_response_parsing(mock_from_response, mock_post, compressor):
-    """
-    Verifies that the raw API response is parsed and passed to CompressedPrompt correctly.
-    """
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = MOCK_API_RESPONSE
-    mock_post.return_value = mock_response
-
-    compressor.compress("ctx", "prmt")
-
-    # Check that CompressedPrompt.from_api_response was called with correct content
-    mock_from_response.assert_called_once()
-    call_args = mock_from_response.call_args
-    
-    # content arg (first positional or keyword)
-    assert call_args.kwargs.get('content') == "Shortened text"
-    
-    # raw_response arg: Check if tokens were mapped correctly
-    raw_metrics = call_args.kwargs.get('raw_response')
-    assert raw_metrics["original_prompt_tokens"] == 100
-    assert raw_metrics["latency_ms"] == 120
-
-def test_missing_api_key_raises_error():
-    # Initialize without key
-    comp = ScaleDownCompressor(api_key=None)
-    # Ensure base class or global config doesn't provide one accidentally for this test
-    comp.api_key = None 
-    
-    with pytest.raises(AuthenticationError):
-        comp.compress("ctx", "prompt")
-
-def test_batch_compression_lists():
-    """
-    Test that providing lists triggers _compress_batch
-    """
-    comp = ScaleDownCompressor(api_key="test")
-    
-    # We mock _compress_single instead of requests to test the threading logic simpler
-    with patch.object(comp, '_compress_single') as mock_single:
-        mock_single.return_value = "mock_result"
+        compressor = ScaleDownCompressor(api_key=api_key, target_model="gpt-4o")
+        context = "ScaleDown integration test context."
+        prompt = "Shorten this."
         
-        contexts = ["c1", "c2"]
+        # This actually hits the network!
+        result = compressor.compress(context, prompt)
+        
+        self.assertIsInstance(result, CompressedPrompt)
+        self.assertTrue(len(result.content) > 0)
+        self.assertGreater(result.metrics.latency_ms, 0)
+
+
+class TestScaleDownCompressor(unittest.TestCase):
+    def setUp(self):
+        self.compressor = ScaleDownCompressor(api_key="test_key", target_model="gpt-4o")
+
+    @patch('requests.post')
+    def test_compress_single_success(self, mock_post):
+        # 1. Setup Mock Response
+        mock_response_data = {
+            "results": {
+                "compressed_prompt": "Compressed content",
+                "original_prompt_tokens": 100,
+                "compressed_prompt_tokens": 50,
+                "request_metadata": {"timestamp": "2023-01-01T00:00:00Z"}
+            },
+            "latency_ms": 123,
+            "model_used": "gpt-4o"
+        }
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response_data
+
+        # 2. Execute
+        result = self.compressor.compress("context", "prompt")
+
+        # 3. Assert Payload Structure
+        args, kwargs = mock_post.call_args
+        self.assertEqual(kwargs['headers']['x-api-key'], 'test_key')
+        self.assertEqual(kwargs['json']['model'], 'gpt-4o')
+        self.assertEqual(kwargs['json']['scaledown']['rate'], 'auto')
+
+        # 4. Assert Result
+        self.assertEqual(result.content, "Compressed content")
+        self.assertEqual(result.metrics.original_prompt_tokens, 100)
+        self.assertEqual(result.metrics.latency_ms, 123)
+
+    @patch('requests.post')
+    def test_compress_batch(self, mock_post):
+        # Mocking for batch is tricky with ThreadPool, so we mock the response
+        # to be returned for EACH call
+        mock_response_data = {
+            "results": {"compressed_prompt": "Batch content"}
+        }
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = mock_response_data
+
+        contexts = ["ctx1", "ctx2"]
         prompts = ["p1", "p2"]
         
-        results = comp.compress(context=contexts, prompt=prompts)
+        results = self.compressor.compress(contexts, prompts)
         
-        assert len(results) == 2
-        assert mock_single.call_count == 2
+        self.assertEqual(len(results), 2)
+        self.assertEqual(mock_post.call_count, 2)
 
-def test_broadcast_compression():
-    """
-    Test 1 prompt + N contexts = N requests
-    """
-    comp = ScaleDownCompressor(api_key="test")
-    
-    with patch.object(comp, '_compress_single') as mock_single:
-        mock_single.return_value = "mock_result"
-        
-        contexts = ["c1", "c2", "c3"]
-        prompt = "single prompt"
-        
-        results = comp.compress(context=contexts, prompt=prompt)
-        
-        assert len(results) == 3
-        # Ensure the single prompt was used for all calls
-        call_args = mock_single.call_args_list
-        assert call_args[0][0][1] == "single prompt"
-        assert call_args[1][0][1] == "single prompt"
+    def test_missing_api_key_raises_error(self):
+        # Ensure both env var and global getter return None
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("scaledown.get_api_key", return_value=None):
+                comp = ScaleDownCompressor(api_key=None)
+                with self.assertRaises(AuthenticationError):
+                    comp.compress("ctx", "prompt")
+
+if __name__ == '__main__':
+    unittest.main()

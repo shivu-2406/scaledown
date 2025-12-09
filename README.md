@@ -1,31 +1,16 @@
-# scaledown
+# ScaleDown
 
-`scaledown` is a Python client for the ScaleDown API. It helps you compress long contexts and prompts to reduce token usage and latency while preserving downstream model performance.
-
-## Features
-
-- Compress long contexts relative to a prompt using ScaleDown's hosted API.
-- Target specific downstream models (e.g. `gpt-4o`) for compression.
-- Support for both single and batched compression.
-- Threaded batch execution for better throughput.
-- Simple configuration via environment variables.
-
----
+ScaleDown is an intelligent prompt compression framework that reduces LLM token usage while preserving semantic meaning.
 
 ## Installation
+
+Install using `uv` (recommended) or `pip`:
+
 
 From PyPI (if published):
 
 ```bash
 pip install scaledown
-```
-
-From source (this repository):
-
-```bash
-git clone https://github.com/ilatims-b/scaledown.git
-cd scaledown
-pip install -e .
 ```
 
 ---
