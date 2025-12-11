@@ -1,129 +1,192 @@
-# ScaleDown v0.1.3 - Advanced AI Prompt Optimization Package
-ScaleDown is a comprehensive Python package for creating, managing, and optimizing AI prompt templates with advanced modular optimization techniques. It integrates template management, style systems, and cutting-edge prompt optimization methods to reduce hallucinations and improve AI response quality.
+# ScaleDown
 
-## Key Features
-
-### **Modular Prompt Optimization**
-- **5 Advanced Optimizers**: Expert Persona, Chain-of-Thought, Uncertainty Quantification, Chain-of-Verification, and baseline
-- **8 Pre-built Optimization Styles**: Expert Thinking, Verified Expert, Careful Reasoning, and more
-- **Composable Pipeline**: Combine multiple optimizers in any sequence
-- **Hallucination Reduction**: Specialized techniques to minimize AI hallucinations
-
-### **Professional Template System**
-- **Template Management**: Create and manage reusable prompt templates
-- **Variable Substitution**: Dynamic placeholder replacement
-- **Category Organization**: Organize templates by domain and use case
-- **Template Optimization**: Apply optimizers to templates automatically
-
-### **Multi-LLM Integration**
-- **Universal LLM Support**: OpenAI GPT, Google Gemini, ScaleDown models
-- **Unified Interface**: Consistent API across all model providers
-- **Token Management**: Smart token counting and limit handling
-- **Model Optimization**: Model-specific prompt optimization
-
-### **Backward Compatibility**
-- **Legacy API Support**: Existing code continues to work unchanged
-- **Enhanced Features**: Opt-in advanced functionality
-- **Migration Path**: Seamless upgrade from basic to advanced usage
+ScaleDown is an intelligent prompt compression framework that reduces LLM token usage while preserving semantic meaning.
 
 ## Installation
+
+Install using `uv` (recommended) or `pip`:
+
+
+From PyPI (if published):
 
 ```bash
 pip install scaledown
 ```
 
-# Quick Start
+---
 
-### Basic Usage (Backward Compatible)
-```python
-from scaledown.tools import tools
-result = tools(llm='gemini-1.5-flash', optimiser='cot')
-llm_provider = result['llm_provider']
-optimizer = result['optimizer']
+## Configuration
+
+`ScaleDownCompressor` needs an API key and an API URL. The URL has a sensible default and can be overridden via an environment variable.
+
+### Environment variables
+
+- `SCALEDOWN_API_KEY` – your ScaleDown API key (used by the package-wide `scaledown.get_api_key()`).
+- `SCALEDOWN_API_URL` – optional override for the compression endpoint.  
+  Defaults to:
+
+```
+https://api.scaledown.ai/v1/compress
 ```
 
-### Enhanced Usage with Optimization Pipeline
+Example:
+
+```bash
+export SCALEDOWN_API_KEY="sk-your-key"
+export SCALEDOWN_API_URL="https://api.scaledown.ai/v1/compress"
+```
+
+---
+
+## Quickstart
+
+### Single prompt compression
+
 ```python
-from scaledown import ScaleDown
+from scaledown.compressor.scaledown_compressor import ScaleDownCompressor
 
-# Initialize with optimization features
-sd = ScaleDown()
-
-# Select model and optimization style
-sd.select_model('scaledown-gpt-4o')
-
-# Optimize and call LLM in one step
-result = sd.optimize_and_call_llm(
-    question="Explain quantum computing principles",
-    optimizers=['expert_persona', 'cot', 'uncertainty'],
-    max_tokens=500
+# Initialize the compressor
+compressor = ScaleDownCompressor(
+    target_model="gpt-4o",
+    rate="auto",
+    api_key="sk-your-key",        # or rely on scaledown.get_api_key()
+    temperature=None,
+    preserve_keywords=False,
+    preserve_words=None,
 )
 
-print(f"Optimized Response: {result['llm_response']}")
-print(f"Optimization Report: {result['optimization_metrics']}")
+context = "Very long context, e.g. conversation history or a document..."
+prompt = "Summarize the main points in 3 bullet points."
+
+compressed = compressor.compress(context=context, prompt=prompt)
+
+# `compressed` is a CompressedPrompt instance (string subclass)
+print("Compressed text:")
+print(compressed)
+
+print("\nMetrics:")
+print(compressed.metrics)
+# Example keys: original_prompt_tokens, compressed_prompt_tokens, latency_ms, model_used, timestamp
 ```
 
-### Direct Optimization (Simple API)
+---
+
+## Batch and broadcast usage
+
+`ScaleDownCompressor.compress` supports multiple input modes:
+
+- `context: str`, `prompt: str` → single compression.
+- `context: List[str]`, `prompt: List[str]` (same length) → batched compression.
+- `context: List[str]`, `prompt: str` → prompt is broadcast to all contexts.
+
+### Batched compression
+
 ```python
-from scaledown import optimize_prompt, parse_optimizers
+contexts = [
+    "Conversation / document A ...",
+    "Conversation / document B ...",
+]
+prompts = [
+    "Summarize conversation A.",
+    "Summarize conversation B.",
+]
 
-# Parse optimizers
-optimizers = parse_optimizers('expert_persona,cot,uncertainty')
+batch_results = compressor.compress(context=contexts, prompt=prompts)
 
-# Optimize prompt
-question = "What are the implications of artificial general intelligence?"
-optimized_prompt = optimize_prompt(question, optimizers)
-
-print(f"Original: {question}")
-print(f"Optimized: {optimized_prompt}")
+for i, res in enumerate(batch_results):
+    print(f"=== Result {i} ===")
+    print(res)
+    print(res.metrics)
 ```
 
-## Available Optimizers
+### Broadcast prompt
 
-| Optimizer | Description | Use Case |
-|-----------|-------------|----------|
-| `expert_persona` | Adds domain expertise context | Specialized knowledge tasks |
-| `cot` | Chain-of-Thought reasoning | Complex problem solving |
-| `uncertainty` | Confidence assessment | Critical decision making |
-| `cove` | Chain-of-Verification | Fact-checking and accuracy |
-| `none` | Baseline (no optimization) | Performance comparison |
+```python
+docs = [
+    "First document about topic X...",
+    "Second document about topic Y...",
+    "Third document about topic Z...",
+]
 
-## Pre-built Optimization Styles
+query = "Extract the 3 most important facts."
 
-| Style | Optimizers | Best For |
-|-------|------------|----------|
-| Expert Thinking | `expert_persona + cot` | Research and analysis |
-| Verified Expert | `expert_persona + cove` | Fact-based responses |
-| Careful Reasoning | `cot + uncertainty` | Cautious decision making |
-| Comprehensive Analysis | `all optimizers` | Critical tasks |
+broadcast_results = compressor.compress(context=docs, prompt=query)
 
-
-## Submitting to PyPI
-Step 1:
-Make sure to update the version in `pyproject.toml` file
-
-Step 2:
-Build the package
-```
-python -m build
-```
-This should create a `dist` folder.
-
-If you haven't already, make sure you upgrade the `build` package
-```
-pip install --upgrade build
+for res in broadcast_results:
+    print(res)
 ```
 
-Step 3:
-Upload the package to PyPI:
-```
-python -m twine upload dist/*
+---
+
+## Error handling
+
+The package defines custom exceptions:
+
+- `AuthenticationError` – raised when no API key is available (`scaledown.get_api_key()` and constructor both fail to provide one).
+- `APIError` – raised when the HTTP request to the ScaleDown API fails (network issues, non‑2xx responses, etc.).
+
+Example:
+
+```python
+from scaledown.compressor.scaledown_compressor import ScaleDownCompressor
+from scaledown.exceptions import AuthenticationError, APIError
+
+compressor = ScaleDownCompressor(rate="auto")
+
+try:
+    result = compressor.compress("context", "prompt")
+except AuthenticationError as e:
+    print("Authentication failed:", e)
+except APIError as e:
+    print("API call failed:", e)
 ```
 
-You need to make sure you have `twine` installed and updated:
-```
-pip install --upgrade twine
+---
+
+## Development
+
+### Setup
+
+```bash
+git clone https://github.com/ilatims-b/scaledown.git
+cd scaledown
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
 ```
 
-Step 4:
-You will need an API key to upload to the official ScaleDown PyPI package. You can get this from @soham96
+### Running tests
+
+Tests live in the `tests/` directory and use `pytest`.
+
+```bash
+pip install pytest requests
+pytest -v
+```
+
+The tests mock HTTP calls so they do not hit the real ScaleDown API.
+
+---
+
+## Project structure (simplified)
+
+```
+scaledown/
+    __init__.py
+    compressor/
+        __init__.py
+        base.py
+        config.py
+        scaledown_compressor.py
+    exceptions.py
+    types.py
+tests/
+    test_config.py
+    test_scaledown_compressor.py
+```
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
